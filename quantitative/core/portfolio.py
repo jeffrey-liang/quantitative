@@ -1,6 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Copyright 2016 Jeffrey Liang
 
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
 import pandas as pd
 import numpy as np
 import uuid
@@ -17,7 +31,9 @@ class Portfolio(object):
                                                      'Total'])
         self.portfolio_value = 0
         self.start_time = 0
-        self.system_time = 0
+        self.end_time = 0
+        self.beginning_cash = 0
+        self.ending_cash = 0
         self.total_margin_requirement_percentage = 1.25
         self.broker = 'ib'
 
@@ -25,21 +41,56 @@ class Portfolio(object):
                                                      'Shares', 'Commission',
                                                      'Total', 'ID'])
         self.ticker_ids = {}
+        self.include_commission = True
+        self.asset_weights = {}
+        self.simulation_completed = False
 
-    def get_portfolio_value(self):
-        return self.open_positions['Total'].sum() + self.get_cash()
+    def get_portfolio_value(self, show_all=True, freq='B'):
 
-    def get_cash(self, show_all=False):
+        if self.simulation_completed:
 
-        if show_all is False:
-            return self.cash['Amount'][-1]
+            # check if there is a value at the end, if not, add the last value
+            # to the last time so we can resample and ffill
+            if self.portfolio_value.index[-1] != self.end_time:
+                self.portfolio_value.loc[
+                    self.end_time] = self.portfolio_value['Value'][-1]
+
+            self.portfolio_value = self.portfolio_value.resample(freq).ffill()
+            if show_all:
+                return self.portfolio_value
+
+            else:
+                return self.portfolio_value.iloc[-1]
+        else:
+
+            if show_all:
+                return self.portfolio_value
+
+            else:
+                return self.portfolio_value.iloc[-1]
+
+    def get_cash(self, show_all=False, freq='B'):
+
+        if self.simulation_completed:
+
+            if self.cash.index[-1] != self.end_time:
+                self.cash.loc[self.end_time] = self.cash['Amount'][-1]
+
+        self.cash = self.cash.resample(freq).ffill()
+
+        if show_all:
+            return np.round(self.cash, 2)
 
         else:
-            return self.cash
+            return np.round(self.cash['Amount'][-1], 2)
 
     def modify_cash(self, amount, time):
 
         self.cash.loc[time] = self.cash.iloc[-1] + amount
+
+    def modify_portfolio_value(self, time):
+        self.portfolio_value.loc[time] = (
+            self.get_cash() + self.open_positions['Total'].sum())
 
     def get_shares(self, ticker):
 
@@ -52,7 +103,11 @@ class Portfolio(object):
     def set_portfolio_cash(self, amount):
         '''User function'''
         self.cash = pd.DataFrame({'Amount': [amount]},
-                                 index=[self.start_time])
+                                 index=[0])
+
+        self.portfolio_value = pd.DataFrame({'Value': [amount]}, index=[0])
+
+        self.beginning_cash = amount
 
     def add_cash(self, amount):
         """User function"""
@@ -65,6 +120,33 @@ class Portfolio(object):
 
         else:
             raise Exception('Time not as datetime object.')
+
+    def get_transaction_log(self):
+        return self.transaction_log.drop(['ID'], axis=1)
+
+    def calculate_asset_weights(self):
+
+        total = self.open_positions['Total'].sum()
+
+        for sec in self.open_positions.index:
+            self.asset_weights[sec] = (self.open_positions.loc[
+                                       sec]['Total'] / total)
+
+    def get_asset_weights(self):
+        self.calculate_asset_weights()
+
+        return self.asset_weights
+
+    def get_open_positions(self):
+        return self.open_positions
+
+    def get_portfolio_returns(self, log=True):
+
+        if log:
+            return np.log(self.portfolio_value / self.portfolio_value.shift(1))
+
+        else:
+            return self.portfolio_value.pct_change()
 
     def postiions(self, time, ticker, price, shares):
         '''Enter and exit trades'''
@@ -85,6 +167,8 @@ class Portfolio(object):
                 self.open_positions.loc[
                     ticker] = price, shares, (price * shares)
 
+                self.modify_portfolio_value(time)
+
             elif ticker in self.open_positions.index:
 
                 if (shares + self.open_positions.loc[ticker]['Shares'] > 0):
@@ -103,6 +187,8 @@ class Portfolio(object):
 
                     self.open_positions.loc[ticker] = price, shares, total
 
+                    self.modify_portfolio_value(time)
+
                 elif (shares + self.open_positions.loc[ticker]['Shares'] == 0):
                     ''' exit short position'''
 
@@ -115,6 +201,7 @@ class Portfolio(object):
 
                     self.open_positions = self.open_positions.drop(ticker)
                     self.short_positions = self.short_positions.drop(ticker)
+                    self.modify_portfolio_value(time)
 
                 elif (self.open_positions.loc[ticker]['Shares'] + shares > 0):
                     '''Short to long position'''
@@ -133,6 +220,7 @@ class Portfolio(object):
                     total = price * long_shares
 
                     self.open_positions.loc[ticker] = price, long_shares, total
+                    self.modify_portfolio_value(time)
 
                 elif (self.open_positions.loc[ticker]['Shares'] + shares < 0):
                     '''reducing short position'''
@@ -153,6 +241,7 @@ class Portfolio(object):
                     self.short_positions.loc[ticker]['Shares'] += shares
                     self.short_positions.loc[ticker][
                         'Total'] = self.open_positions.loc[ticker]['Total']
+                    self.modify_portfolio_value(time)
 
         elif shares < 0:
 
@@ -175,6 +264,7 @@ class Portfolio(object):
 
                 self.short_positions.loc[
                     ticker] = price, shares, (price * shares)
+                self.modify_portfolio_value(time)
 
             elif ticker in self.open_positions.index:
 
@@ -189,18 +279,19 @@ class Portfolio(object):
                     self.remove_transaction_id(ticker)
 
                     self.open_positions = self.open_positions.drop(ticker)
+                    self.modify_portfolio_value(time)
 
                 elif (shares + self.open_positions.loc[ticker]['Shares'] > 0):
                     ''' off loading some shares, still long'''
 
                     self.modify_cash(-(contract_cost + commission), time)
-                    self.add_to_transaction_log(time, price, shares,
+                    self.add_to_transaction_log(time, ticker, price, shares,
                                                 commission)
 
-                    shares = self.open_positions.loc[ticker] + shares
-
+                    shares = self.open_positions.loc[ticker]['Shares'] + shares
                     self.open_positions.loc[
                         ticker] = price, shares, (shares * price)
+                    self.modify_portfolio_value(time)
 
                 elif (shares + self.open_positions.loc[ticker]['Shares'] < 0):
                     ''' Long to short position or add to short position'''
@@ -227,6 +318,7 @@ class Portfolio(object):
                     self.short_positions.loc[
                         ticker] = price, shorted_shares, (price *
                                                           shorted_shares)
+                    self.modify_portfolio_value(time)
 
     def check_cash_condition(self, price, shares):
         """ Check if enough cash in account"""
@@ -244,7 +336,7 @@ class Portfolio(object):
             if self.get_cash() < total_margin_requirement:
                 msg = (
                     'Trade does not meet total margin requirements. '
-                    'Total margin required: {} Cash in portfolio: {}'.format(
+                    'Total margin required: {}, Cash in portfolio: {}'.format(
                         np.abs(total_margin_requirement), self.get_cash())
                 )
                 raise Exception(msg)
@@ -277,29 +369,33 @@ class Portfolio(object):
         Minimum per order is 1.00 CAD
         Maximum per order is 0.5% of trade value.
         '''
+        if self.include_commission:
 
-        COST_PER_SHARE = 0.01
-        MIN_PER_ORDER_COST = 1.
-        MAX_PER_ORDER_PERCENTAGE = 0.005
+            COST_PER_SHARE = 0.01
+            MIN_PER_ORDER_COST = 1.
+            MAX_PER_ORDER_PERCENTAGE = 0.005
 
-        interactive_brokers = ['interactive brokers', 'interactive', 'ib']
+            interactive_brokers = ['interactive brokers', 'interactive', 'ib']
 
-        if broker.lower() in interactive_brokers:
-            trade_value = price * shares
-            commission = trade_value * COST_PER_SHARE
+            if broker.lower() in interactive_brokers:
+                trade_value = price * shares
+                commission = trade_value * COST_PER_SHARE
 
-            if commission <= MIN_PER_ORDER_COST:
-                return MIN_PER_ORDER_COST
+                if commission <= MIN_PER_ORDER_COST:
+                    return MIN_PER_ORDER_COST
 
-            elif commission >= (trade_value * MAX_PER_ORDER_PERCENTAGE):
-                return trade_value * MAX_PER_ORDER_PERCENTAGE
+                elif commission >= (trade_value * MAX_PER_ORDER_PERCENTAGE):
+                    return trade_value * MAX_PER_ORDER_PERCENTAGE
+
+                else:
+                    return commission
 
             else:
-                return commission
+                raise Exception(
+                    'The broker \'{}\' is unavailable.'.format(self.broker))
 
         else:
-            raise Exception(
-                'The broker \'{}\' is unavailable.'.format(self.broker))
+            return 0
 
     def add_to_transaction_log(self, time, ticker, price, shares, commission):
 

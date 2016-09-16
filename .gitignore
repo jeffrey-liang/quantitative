@@ -1,6 +1,7 @@
 # Files and directories
 /dev_files
-
+/quantitative/__pycache__
+/quantitative/core/__pycache__
 # Extensions
 .pyc.lprof
 .pyc
