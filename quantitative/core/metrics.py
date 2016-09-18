@@ -1,5 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Copyright 2016 Jeffrey Liang
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
 import numpy as np
 import pandas as pd
 
@@ -16,12 +31,21 @@ ANNUALIZATION_FACTORS = {'daily': APPROX_BDAYS_PER_YEAR,
 
 
 def CAGR(beg_val, end_val, years, decimals=5):
-    cagr = (np.power((end_val / beg_val), (1 / years))) - 1
+    try:
+        cagr = (np.power((end_val / beg_val), (1 / years))) - 1
 
-    return cagr.round(decimals)
+        return cagr.round(decimals)
+
+    except ZeroDivisionError:
+        years = 1
+
+        cagr = (np.power((end_val / beg_val), (1 / years))) - 1
+
+        return cagr.round(decimals)
 
 
-def sharpe_ratio(asset_returns, risk_free_rate=.05, period='daily'):
+def sharpe_ratio(asset_returns, risk_free_rate=.05, period='daily',
+                 decimals=3):
 
     excess_returns = np.mean(asset_returns - risk_free_rate)
 
@@ -30,7 +54,7 @@ def sharpe_ratio(asset_returns, risk_free_rate=.05, period='daily'):
     sr = (excess_returns / sigma_of_asset) * \
         np.sqrt(ANNUALIZATION_FACTORS[period])
 
-    return sr
+    return np.round(sr, decimals)
 
 
 def rate_of_return(array):
@@ -97,63 +121,56 @@ def drawdowns(array, target='Value'):
     if not isinstance(array, pd.DataFrame):
         raise Exception('Array must be a pandas dataframe.')
 
-    dd_array = array.copy()
+    drawdown_down_times = []
+    drawdown_up_times = []
 
-    # convert data into pct. change
-    dd_array['Pct. Change'] = dd_array[target].pct_change()
+    in_drawdown_period = False
 
-    # since first row is NaN, if the second row is downwards,
-    # set replace NaN with 0.
-    if dd_array['Pct. Change'].ix[1] < 0:
-        dd_array['Pct. Change'].ix[0] = 0
+    array = array.copy()
+    array['Pct. Change'] = array[target].pct_change()
 
-    t0_dd = []
-    t1_dd = []
+    if array['Pct. Change'].ix[1] < 0:
+        drawdown_down_times.append(array['Pct. Change'].index[0])
 
-    for i in range(len(dd_array['Pct. Change'])):
+        in_drawdown_period = True
 
-        time = dd_array['Pct. Change'].index[i]
+    for i in range(1, len(array['Pct. Change'])):
 
-        try:
+        time = array['Pct. Change'].index[i - 1]
 
-            if (dd_array['Pct. Change'][i] > 0 and
-                    dd_array['Pct. Change'][i + 1] < 0):
-                t0_dd.append(time)
+        if in_drawdown_period:
 
-            if (dd_array['Pct. Change'][i] == 0 and
-                    dd_array['Pct. Change'][i + 1] < 0):
-                t0_dd.append(time)
+            if array['Pct. Change'][i] > 0:
+                drawdown_up_times.append(time)
 
-            if (dd_array['Pct. Change'][i] < 0 and
-                    dd_array['Pct. Change'][i + 1] > 0):
-                t1_dd.append(time)
+                in_drawdown_period = False
 
-            if (dd_array['Pct. Change'][i] == 0 and
-                    dd_array['Pct. Change'][i + 1] > 0):
-                t1_dd.append(time)
+        elif not in_drawdown_period:
 
-        except IndexError:
-            pass
+            if array['Pct. Change'][i] < 0:
 
-    # if uneven list, the last drawdown does not go up
-    # when data ends, "assume" end of data is end of drawdown
-    # to continue drawdown
-    if len(t0_dd) != len(t1_dd):
-        t1_dd.append(dd_array['Pct. Change'].index[-1])
+                drawdown_down_times.append(time)
 
-    dd = pd.DataFrame({'From': t0_dd,
-                       'To': t1_dd})
+                in_drawdown_period = True
 
-    dd['Length'] = dd['To'] - dd['From']
-    dd['DD'] = np.round((dd_array[target].loc[dd['From']].values /
-                         dd_array[target].loc[dd['To']].values) - 1, 2)
+    if in_drawdown_period:
+        drawdown_up_times.append(array['Pct. Change'].index[-1])
 
-    dd['Cost'] = (dd_array[target].loc[dd['To']].values -
-                  dd_array[target].loc[dd['From']].values)
-    return dd
+    drawdown_df = pd.DataFrame({'From': drawdown_down_times,
+                                'To': drawdown_up_times})
+
+    drawdown_df['Length'] = drawdown_df['To'] - drawdown_df['From']
+
+    drawdown_df['DD'] = ((array[target].loc[drawdown_df['From']].values /
+                          array[target].loc[drawdown_df['To']].values) - 1).round(5)
+
+    drawdown_df['Cost'] = (array[target].loc[drawdown_df['To']].values -
+                           array[target].loc[drawdown_df['From']].values).round(2)
+
+    return drawdown_df
 
 
-def plot_drawdown(array, target='Value', figsize=(15, 5)):
+def plot_drawdowns(array, target='Value', figsize=(15, 5)):
 
     import matplotlib.pyplot as plt
 
@@ -173,7 +190,6 @@ def drawdown_summary(array):
     # max drawdown
     # average length
     # count of lengths
-
     pass
 
 
@@ -198,3 +214,8 @@ def beta(returns, market_returns):
     matrix = np.vstack((returns, market_returns))
 
     return np.cov(matrix)[0][1] / np.std(market_returns)
+
+
+def profit_loss(returns):
+
+    pass

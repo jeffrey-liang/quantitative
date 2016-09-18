@@ -21,6 +21,9 @@ import uuid
 
 
 class Portfolio(object):
+    """
+    Portfolio to account for transactions during backtests.
+    """
 
     def __init__(self):
 
@@ -46,6 +49,27 @@ class Portfolio(object):
         self.simulation_completed = False
 
     def get_portfolio_value(self, show_all=True, freq='B'):
+        """
+        Get portfolio value.
+
+        Parameters:
+        -----------
+        show_all: bool, optional
+            If True, display portfolio value from beginning to end.
+            If False, only show the latest value.
+        freq: str, optional
+            Resample the portfolio value.
+
+        Returns:
+        --------
+        portfolio value: pandas.core.dataframe
+            The portfolio value.
+
+        Note:
+        -----
+        If method is called during backtest, index dates are not continuous.
+        Method called after backtest have continuous indexes.
+        """
 
         if self.simulation_completed:
 
@@ -70,6 +94,27 @@ class Portfolio(object):
                 return self.portfolio_value.iloc[-1]
 
     def get_cash(self, show_all=False, freq='B'):
+        """
+        Get the cash available in portfolio.
+
+        Parameters:
+        ----------
+        show_all: bool, optional
+            If true, display value of portfolio from beginning to end.
+            If false, only disply the latest value.
+        freq: str, optional
+            Resample the cash.
+
+        Returns:
+        -------
+        cash value: pandas.core.dataframe
+            The cash value of the portfolio.
+
+        Note:
+        -----
+        If method is called during backtest, index dates are not continuous.
+        Method called after backtest have continuous indexes.
+        """
 
         if self.simulation_completed:
 
@@ -85,14 +130,66 @@ class Portfolio(object):
             return np.round(self.cash['Amount'][-1], 2)
 
     def modify_cash(self, amount, time):
+        """
+        Increase or decrease the cash in portfolio.
+
+        Parameters:
+        ----------
+        amount: float
+            The amount to modify account.
+        time: numpy.datetime64
+            The time when cash is modified.
+
+        Returns:
+        -------
+        None
+
+        Notes:
+        -----
+        Not intended for user to use directly.
+        """
 
         self.cash.loc[time] = self.cash.iloc[-1] + amount
 
     def modify_portfolio_value(self, time):
+        """
+        Add the lastest portfolio value at a particular time.
+
+        Parameters:
+        ----------
+        time: numpy.datetime64
+            The time of modification.
+
+        Returns:
+        -------
+        None
+
+        Notes:
+        -----
+        Not intended for user to use directly.
+        """
+
         self.portfolio_value.loc[time] = (
             self.get_cash() + self.open_positions['Total'].sum())
 
     def get_shares(self, ticker):
+        """
+        Get the shares in the portfolio if exist.
+
+        Parameters:
+        ----------
+        ticker: str
+            The security of interest.
+
+        Returns:
+        -------
+        shares: float
+            Returns the number of shares in account.
+
+        Notes:
+        -----
+        Although return is float, shares will be whole numbers.
+        """
 
         try:
             return self.open_positions.loc[ticker]['Shares']
@@ -101,7 +198,23 @@ class Portfolio(object):
             raise Exception('Ticker: {} not in portfolio.'.format(ticker))
 
     def set_portfolio_cash(self, amount):
-        '''User function'''
+        """
+        Set the initial cash before backtests.
+
+        Parameters:
+        ----------
+        amount: float
+            The amount fo cash set before backtest.
+
+        Returns:
+        -------
+        None
+
+        Notes:
+        -----
+        If adding cash during backtest, use add_cash() meethod.
+        """
+
         self.cash = pd.DataFrame({'Amount': [amount]},
                                  index=[0])
 
@@ -110,10 +223,36 @@ class Portfolio(object):
         self.beginning_cash = amount
 
     def add_cash(self, amount):
-        """User function"""
+        """
+        Add cash to the portfolio during backtest.
+
+        Parameters:
+        ----------
+        amount: float
+            The amount of cash to add to portfolio.
+
+        Returns:
+        -------
+        None
+        """
+
         self.modify_cash(amount, self.system_time)
 
     def get_transactions_at(self, time):
+        """
+        Get the transaction at a specific time.
+
+        Parameters:
+        ----------
+        time: numpy.datetime64
+            The time requested.
+
+        Returns:
+        -------
+        transaction: pandas.core.dataframe
+            The transactions at the specified time.
+
+        """
 
         if isinstance(time, pd.Timestamp):
             return self.transaction_log.loc[time]
@@ -122,9 +261,25 @@ class Portfolio(object):
             raise Exception('Time not as datetime object.')
 
     def get_transaction_log(self):
+        """
+        Get the transaction log. Shows all orders.
+
+        Parameters:
+        ----------
+        None
+
+        Returns:
+        --------
+        Transaction log: pandas.core.dataframe
+            The transaction log.
+        """
+
         return self.transaction_log.drop(['ID'], axis=1)
 
     def calculate_asset_weights(self):
+        """
+        Calculates the asset weights in the portfolio.
+        """
 
         total = self.open_positions['Total'].sum()
 
@@ -133,14 +288,53 @@ class Portfolio(object):
                                        sec]['Total'] / total)
 
     def get_asset_weights(self):
+        """
+        Get the weights of assets in the portfolio.
+
+        Parameters:
+        -----------
+        None
+
+        Returns:
+        --------
+        asset weights: pandas.core.dataframe
+            The asset weights.
+        """
+
         self.calculate_asset_weights()
 
         return self.asset_weights
 
     def get_open_positions(self):
+        """
+        Get open positions in the portfolio.
+
+        Parameters:
+        -----------
+        None
+
+        Returns:
+        --------
+
+        open positions: pandas.core.dataframe
+            Open positions in portfolio.
+        """
         return self.open_positions
 
     def get_portfolio_returns(self, log=True):
+        """
+        Get the returns of the portfolio value.
+
+        Parameters:
+        -----------
+        log: bool, optional
+            Specifies if returns are log.
+
+        Returns:
+        --------
+        portfolio value returns: pandas.core.dataframe
+            The portfolio value returns.
+        """
 
         if log:
             return np.log(self.portfolio_value / self.portfolio_value.shift(1))
@@ -149,6 +343,30 @@ class Portfolio(object):
             return self.portfolio_value.pct_change()
 
     def postiions(self, time, ticker, price, shares):
+        """
+        Directly adds positions into the portfolio. Not to be used by the user.
+
+        Parameters:
+        -----------
+        time: numpy.datetime64
+            The time of the transactions
+        ticker: str
+            The security name.
+        price: float
+            The price of the security at the specified time.
+        shares: float/int
+            The number of shares in the order.
+
+        Returns:
+        --------
+        None
+
+        Notes:
+        -----
+        Not to be used by user. When ordering during backtest, use
+        order_on_close, and order_on_next_open.
+        """
+
         '''Enter and exit trades'''
         if shares > 0:
 
@@ -321,7 +539,17 @@ class Portfolio(object):
                     self.modify_portfolio_value(time)
 
     def check_cash_condition(self, price, shares):
-        """ Check if enough cash in account"""
+        """
+        Check if enough cash in account, and margin requirements.
+
+        Parameters:
+        ----------
+        price: float
+            The price of the security.
+        shares: float/int
+            The number of shares in order.
+        """
+
         contract_total = price * shares
 
         if shares >= 0:
@@ -344,6 +572,14 @@ class Portfolio(object):
         return True
 
     def check_if_time_exist(self, time):
+        """
+        Helper function to check if transactions occurred at specific time.
+
+        Parameters:
+        ----------
+        time: numpy.datetime64
+            The time of interest.
+        """
 
         if time in self.transaction_log.index:
             return True
@@ -352,7 +588,16 @@ class Portfolio(object):
             return False
 
     def calculate_cost(self, price, shares):
-        '''Calculate cost of transaction '''
+        """
+        Calculates the cost of the order with commissions.
+
+        Parameters
+        ----------
+        price: float
+            The price of the security.
+        shares: float/int
+            The amount of shares in order.
+        """
 
         contract_cost = np.abs(price * shares)
 
@@ -362,13 +607,27 @@ class Portfolio(object):
         return contract_cost, commission
 
     def calculate_commission(self, broker, price, shares):
-        '''
+        """
         Interactive brokers (CA) commission schedule.
 
         0.01 CAD per share
         Minimum per order is 1.00 CAD
         Maximum per order is 0.5% of trade value.
-        '''
+
+        Parameters:
+        ----------
+        broker: str
+            The broker of the backtest.
+        price: float
+            The price of the security.
+        shares: float/int
+            The amount of shares in order.
+
+        Returns:
+        --------
+        Commission: float
+            The commission of the order.
+        """
         if self.include_commission:
 
             COST_PER_SHARE = 0.01
@@ -398,6 +657,26 @@ class Portfolio(object):
             return 0
 
     def add_to_transaction_log(self, time, ticker, price, shares, commission):
+        """
+        Adds the order to the transaction log.
+
+        Parameters:
+        -----------
+        time: numpy.datetime64
+            The time of the transactions
+        ticker: str
+            The security name.
+        price: float
+            The price of the security at the specified time.
+        shares: float/int
+            The number of shares in the order.
+        commission: float
+            The commission of the order.
+
+        Returns:
+        --------
+        None
+        """
 
         trans_id = self.generate_transaction_id(ticker)
         total = price * shares
@@ -419,6 +698,20 @@ class Portfolio(object):
                 ['Ticker', 'Price', 'Shares', 'Commission', 'Total', 'ID']]
 
     def generate_transaction_id(self, ticker):
+        """
+        Generator a unique id to for each order. Transactions to close orders
+        returns the same id as the open order.
+
+        Parameters:
+        -----------
+        ticker: str
+            The security of interest.
+
+        Returns:
+        -------
+        The ticker id: uuid.uuid4
+            The unique ticker id.
+        """
 
         if ticker not in self.ticker_ids:
             self.ticker_ids[ticker] = uuid.uuid4()
@@ -430,5 +723,8 @@ class Portfolio(object):
             return self.ticker_ids[ticker]
 
     def remove_transaction_id(self, ticker):
+        """
+        Helper function to remove transaction id.
+        """
 
         del self.ticker_ids[ticker]
