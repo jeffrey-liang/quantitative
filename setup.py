@@ -8,7 +8,7 @@ packages = ['quantitative',
 
 setup(name='quantitative',
       version='1.0b',
-      description='Quantitative finance, and backtesting library',
+      description='Quantitative finance,and back testing library',
       url='https://github.com/jeffrey-liang/quantitative',
       author='Jeffrey Liang',
       author_email='jeffrey_liang@sfu.ca',
@@ -22,7 +22,7 @@ setup(name='quantitative',
           'Topic :: Office/Business :: Financial :: Investment',
           'Topic :: Scientific/Engineering :: Information Analysis',
           'License :: OSI Approved :: Apache Software License',
-          'Programming Language :: Python :: 2.7'
+          'Programming Language :: Python :: 3.5'
       ],
       keywords='quantitative backtesting finance quant finance stocks',
       install_requires=['pandas', 'numpy', 'scipy'],
