@@ -195,7 +195,8 @@ class Portfolio(object):
             return self.open_positions.loc[ticker]['Shares']
 
         except KeyError:
-            raise Exception('Ticker: {} not in portfolio.'.format(ticker))
+            # raise Exception('Ticker: {} not in portfolio.'.format(ticker))
+            return 0
 
     def set_portfolio_cash(self, amount):
         """

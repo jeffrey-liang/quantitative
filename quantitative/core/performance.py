@@ -31,7 +31,8 @@ class Performance(object):
                     decimals)
 
     def sharpe_ratio(self, risk_free_rate=.05, period='daily', decimals=3):
-        return sharpe_ratio(self.portfolio_value.values, decimals=decimals)
+        return sharpe_ratio(self.portfolio_value.pct_change().dropna().values,
+                            decimals=decimals)
 
     def wins(self):
 
@@ -85,7 +86,7 @@ class Performance(object):
         summary = pd.Series([self.CAGR(),
                              self.sharpe_ratio(),
                              self.win_percentage(),
-                             self.max_drawdown()['DD'][0],
+                             self.max_drawdown()['DD'].values[0],
                              self.volatility()['Value']],
 
                             index=['CAGR',
