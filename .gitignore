@@ -1,8 +1,7 @@
 data_files/
 __pycache__/
 dev_files/
-data_files/
-test*.py
+quantitative/dev_files
 .DS_Store
 .cache
 quantitative.egg-info
