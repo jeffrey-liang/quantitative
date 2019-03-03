@@ -5,7 +5,7 @@ import pandas as pd
 from collections import namedtuple
 
 def log_returns(prices):
-    return np.log(np.roll(prices, -1) / prices)
+    return np.log(prices / np.roll(prices, 1))
 
 
 def parse_transaction_log(transaction_log):
